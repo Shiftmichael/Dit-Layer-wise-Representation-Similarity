@@ -163,6 +163,7 @@ slurm*.out
 *.npy
 *.npz
 *.csv
+*.bin
 
 # Images
 *.png
