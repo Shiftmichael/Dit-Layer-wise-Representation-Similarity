@@ -118,8 +118,9 @@ class DiTBlock(nn.Module):
     def forward(self, x, c):
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(c).chunk(6, dim=1)
         x = x + gate_msa.unsqueeze(1) * self.attn(modulate(self.norm1(x), shift_msa, scale_msa))
+        check_res = gate_mlp.unsqueeze(1) * self.mlp(modulate(self.norm2(x), shift_mlp, scale_mlp))
         x = x + gate_mlp.unsqueeze(1) * self.mlp(modulate(self.norm2(x), shift_mlp, scale_mlp))
-        return x
+        return x, check_res
 
 
 class FinalLayer(nn.Module):
@@ -180,11 +181,13 @@ class DiT(nn.Module):
         self.initialize_weights()
         
         # Add dictionary to save outputs of each block
-        self.block_outputs = {}
+        # self.block_outputs = {}
+        # self.block_outputs_img = {}
+        # self.c = None
 
-        # Register hooks to save the output after each block
-        for i, block in enumerate(self.blocks):
-            block.register_forward_hook(self.save_output_hook(i))
+        # # Register hooks to save the output after each block
+        # for i, block in enumerate(self.blocks):
+        #     block.register_forward_hook(self.save_output_hook(i))
 
     def initialize_weights(self):
         # Initialize transformer layers:
@@ -237,10 +240,13 @@ class DiT(nn.Module):
         imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
         return imgs
     
-    def save_output_hook(self, index):
-        def hook(module, input, output):
-            self.block_outputs[f'block_{index}'] = output
-        return hook
+    # def save_output_hook(self, index):
+    #     def hook(module, input, output):
+    #         self.block_outputs[f'block_{index}'] = output
+    #         final_output = self.final_layer(output, self.c)
+    #         imgs = self.unpatchify(final_output)
+    #         self.block_outputs_img[f'block_{index}'] = imgs
+    #     return hook
 
     def forward(self, x, t, y):
         """
@@ -249,14 +255,41 @@ class DiT(nn.Module):
         t: (N,) tensor of diffusion timesteps
         y: (N,) tensor of class labels
         """
+        label = y[0].item()
+        t_cache = t
         x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
         t = self.t_embedder(t)                   # (N, D)
         y = self.y_embedder(y, self.training)    # (N, D)
         c = t + y                                # (N, D)
-        for block in self.blocks:
-            x = block(x, c)                      # (N, T, D)
+        for i, block in enumerate(self.blocks):
+            x, check = block(x, c)                      # (N, T, D)
+
+            import os
+            t_label = torch.floor(t_cache[0] / 4).int().item()
+            # t_label = t_cache[0]
+            if t_label % 10 == 0 or t_label == 249:
+                output_dir = f"./block_output/nc_max/{label}/res_1/{t_label}"
+                os.makedirs(output_dir, exist_ok=True)
+                output_path = os.path.join(output_dir, f'{i}_output.pt')
+                output, _ = check.chunk(2, dim = 0)
+                torch.save(output, output_path)
+                output_dir = f"./block_output/nc_max/{label}/1/{t_label}"
+                os.makedirs(output_dir, exist_ok=True)
+                output_path = os.path.join(output_dir, f'{i}_output.pt')
+                output, _ = x.chunk(2, dim = 0)
+                torch.save(output, output_path)
+                output_dir = f"./block_output/nc_max/{label}/imgs/{t_label}"
+                os.makedirs(output_dir, exist_ok=True)
+                output_path = os.path.join(output_dir, f'{i}_output.pt')
+                img = self.final_layer(x, c)
+                img = self.unpatchify(img)
+                img, _ = img.chunk(2, dim = 0) 
+                torch.save(img, output_path)
+        print(f"the {t_label}'s output is saved")
+            
         x = self.final_layer(x, c)                # (N, T, patch_size ** 2 * out_channels)
         x = self.unpatchify(x)                   # (N, out_channels, H, W)
+
         return x
 
     def forward_with_cfg(self, x, t, y, cfg_scale):
@@ -277,16 +310,17 @@ class DiT(nn.Module):
         eps = torch.cat([half_eps, half_eps], dim=0)
         return torch.cat([eps, rest], dim=1)
     
-    def forward_with_cfg_block(self, x, t, y, cfg_scale):
-        self.block_outputs = {}
-        half = x[: len(x) // 2]
-        combined = torch.cat([half, half], dim=0)
-        model_out = self.forward(combined, t, y)
-        eps, rest = model_out[:, :3], model_out[:, 3:]
-        cond_eps, uncond_eps = torch.split(eps, len(eps) // 2, dim=0)
-        half_eps = uncond_eps + cfg_scale * (cond_eps - uncond_eps)
-        eps = torch.cat([half_eps, half_eps], dim=0)
-        return torch.cat([eps, rest], dim=1), self.block_outputs
+    # def forward_with_cfg_block(self, x, t, y, cfg_scale):
+    #     self.block_outputs = {}
+    #     self.block_outputs_img = {}
+    #     half = x[: len(x) // 2]
+    #     combined = torch.cat([half, half], dim=0)
+    #     model_out = self.forward(combined, t, y)
+    #     eps, rest = model_out[:, :3], model_out[:, 3:]
+    #     cond_eps, uncond_eps = torch.split(eps, len(eps) // 2, dim=0)
+    #     half_eps = uncond_eps + cfg_scale * (cond_eps - uncond_eps)
+    #     eps = torch.cat([half_eps, half_eps], dim=0)
+    #     return torch.cat([eps, rest], dim=1), self.block_outputs, self.block_outputs_img
 
 
 #################################################################################

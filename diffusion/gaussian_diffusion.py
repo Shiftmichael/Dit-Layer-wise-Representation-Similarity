@@ -276,17 +276,23 @@ class GaussianDiffusion:
 
         B, C = x.shape[:2]
         assert t.shape == (B,)
-        model_output, block_outputs= model(x, t, **model_kwargs)
+        # model_output, block_outputs, block_outputs_img= model(x, t, **model_kwargs        model_output = model(x, t, **model_kwargs)
         
         # save the Block output
-        import os
-        import torch
-        for block_name, output in block_outputs.items():
-            output_dir = f"./block_output/417_baloon/{t[0]}"
-            os.makedirs(output_dir, exist_ok=True)
-            output_path = os.path.join(output_dir, f'{block_name}_output.pt')
-            torch.save(output, output_path)
-            print(f"Output of {block_name}: {output.shape} saved to: {output_path}")
+        # import os
+        # import torch
+        # for block_name, output in block_outputs.items():
+        #     output_dir = f"./block_output/417_baloon/{t[0]}"
+        #     os.makedirs(output_dir, exist_ok=True)
+        #     output_path = os.path.join(output_dir, f'{block_name}_output.pt')
+        #     torch.save(output, output_path)
+        #     print(f"Output of {block_name}: {output.shape} saved to: {output_path}")
+        # for block_name, img in block_outputs_img.items():
+        #     output_dir = f"./block_output/417_baloon/imgs/{t[0]}"
+        #     os.makedirs(output_dir, exist_ok=True)
+        #     output_path = os.path.join(output_dir, f'{block_name}_output.pt')
+        #     torch.save(img, output_path)
+        #     print(f"Output of {block_name}: {output.shape} saved to: {output_path}")
         
         if isinstance(model_output, tuple):
             model_output, extra = model_output

@@ -17,8 +17,10 @@ from download import find_model
 from models import DiT_models
 import argparse
 
+def generate_labels(label, count):
+    return [label] * count
 
-def main(args):
+def main(args, label):
     # Setup PyTorch:
     torch.manual_seed(args.seed)
     torch.set_grad_enabled(False)
@@ -45,7 +47,7 @@ def main(args):
 
     # Labels to condition the model with (feel free to change):
     # class_labels = [207, 360, 387, 974, 88, 979, 417, 279]
-    class_labels = [417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417, 417]
+    class_labels = generate_labels(label, 10)
 
     # Create sampling noise:
     n = len(class_labels)
@@ -63,7 +65,7 @@ def main(args):
     #     model.forward_with_cfg, z.shape, z, clip_denoised=False, model_kwargs=model_kwargs, progress=True, device=device
     # )
     samples = diffusion.p_sample_loop(
-        model.forward_with_cfg_block, z.shape, z, clip_denoised=False, model_kwargs=model_kwargs, progress=True, device=device
+        model.forward_with_cfg, z.shape, z, clip_denoised=False, model_kwargs=model_kwargs, progress=True, device=device
     )
     samples, _ = samples.chunk(2, dim=0)  # Remove null class samples
     samples = vae.decode(samples / 0.18215).sample
@@ -72,7 +74,7 @@ def main(args):
     import os
     output_dir = "./results"
     os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, f'sample_360.png')
+    output_path = os.path.join(output_dir, f'sample_{label}.png')
     save_image(samples, output_path, nrow=4, normalize=True, value_range=(-1, 1))
 
 
@@ -84,8 +86,12 @@ if __name__ == "__main__":
     parser.add_argument("--num-classes", type=int, default=1000)
     parser.add_argument("--cfg-scale", type=float, default=4.0)
     parser.add_argument("--num-sampling-steps", type=int, default=250)
-    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--ckpt", type=str, default="pretrain/DiT-XL-2-256x256.pt",
                         help="Optional path to a DiT checkpoint (default: auto-download a pre-trained DiT-XL/2 model).")
     args = parser.parse_args()
-    main(args)
+    # class_labels = [207, 360, 387, 974, 88, 979, 417, 279, 112, 65]
+    class_labels = [88, 207, 417, 974]
+    for label in class_labels:
+        # args.seed = args.seed + 1
+        main(args, label)
